@@ -8,6 +8,8 @@
 
 
 import os
+
+from .neck_optimize import adjust_keypoints
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import json
@@ -292,14 +294,27 @@ class OpenposeDetector:
                     left_hand, right_hand = self.detect_hands(body, oriImg)
                 if include_face:
                     face = self.detect_face(body, oriImg)
+                nkeypoints = [
+                    {
+                        "x": keypoint.x,
+                        "y": keypoint.y,
+                    } if keypoint is not None else None for keypoint in body.keypoints
+                ]
+                for keypoint in nkeypoints:
+                    print(keypoint)
+
+                new_keypoints = adjust_keypoints(nkeypoints)
+                for keypoint in new_keypoints:
+                    print(keypoint)
                 
+
                 results.append(PoseResult(BodyResult(
                     keypoints=[
                         Keypoint(
-                            x=keypoint.x / float(W),
-                            y=keypoint.y / float(H)
+                            x=keypoint["x"] / float(W),
+                            y=keypoint["y"] / float(H)
                         ) if keypoint is not None else None
-                        for keypoint in body.keypoints
+                        for keypoint in new_keypoints
                     ], 
                     total_score=body.total_score,
                     total_parts=body.total_parts
