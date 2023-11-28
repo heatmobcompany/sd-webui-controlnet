@@ -300,13 +300,7 @@ class OpenposeDetector:
                         "y": keypoint.y,
                     } if keypoint is not None else None for keypoint in body.keypoints
                 ]
-                for keypoint in nkeypoints:
-                    print(keypoint)
-
                 new_keypoints = adjust_keypoints(nkeypoints)
-                for keypoint in new_keypoints:
-                    print(keypoint)
-                
 
                 results.append(PoseResult(BodyResult(
                     keypoints=[

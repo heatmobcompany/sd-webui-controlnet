@@ -7,6 +7,7 @@ from .cv_ox_pose import inference_pose
 
 from typing import List, Optional
 from .types import PoseResult, BodyResult, Keypoint
+from .neck_optimize import adjust_keypoints
 
 
 class Wholebody:
@@ -83,9 +84,23 @@ class Wholebody:
             left_hand = format_keypoint_part(instance[92:113])
             right_hand = format_keypoint_part(instance[113:134])
             face = format_keypoint_part(instance[24:92])
+            
+            nkeypoints = [
+                {
+                    "x": keypoint.x,
+                    "y": keypoint.y,
+                } if keypoint is not None else None for keypoint in body_keypoints
+            ]
+            new_keypoints = adjust_keypoints(nkeypoints)
 
             body = BodyResult(
-                body_keypoints, total_score(body_keypoints), len(body_keypoints)
+                [
+                    Keypoint(
+                        x=keypoint["x"],
+                        y=keypoint["y"],
+                    ) if keypoint is not None else None
+                    for keypoint in new_keypoints
+                ], total_score(body_keypoints), len(body_keypoints)
             )
             pose_results.append(PoseResult(body, left_hand, right_hand, face))
 
