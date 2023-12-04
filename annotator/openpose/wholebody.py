@@ -26,7 +26,7 @@ class Wholebody:
         self.session_pose.setPreferableBackend(backend)
         self.session_pose.setPreferableTarget(providers)
     
-    def __call__(self, oriImg) -> Optional[np.ndarray]:
+    def __call__(self, oriImg, include_hand = True, include_face = True) -> Optional[np.ndarray]:
         det_result = inference_detector(self.session_det, oriImg)
         if det_result is None:
             return None
@@ -56,7 +56,7 @@ class Wholebody:
         return keypoints_info
 
     @staticmethod
-    def format_result(keypoints_info: Optional[np.ndarray]) -> List[PoseResult]:
+    def format_result(keypoints_info: Optional[np.ndarray], include_hand = True, include_face = True) -> List[PoseResult]:
         def format_keypoint_part(
             part: np.ndarray,
         ) -> Optional[List[Optional[Keypoint]]]:
@@ -81,9 +81,9 @@ class Wholebody:
 
         for instance in keypoints_info:
             body_keypoints = format_keypoint_part(instance[:18]) or ([None] * 18)
-            left_hand = format_keypoint_part(instance[92:113])
-            right_hand = format_keypoint_part(instance[113:134])
-            face = format_keypoint_part(instance[24:92])
+            left_hand = format_keypoint_part(instance[92:113]) if include_hand else None
+            right_hand = format_keypoint_part(instance[113:134]) if include_hand else None
+            face = format_keypoint_part(instance[24:92]) if include_face else None
             
             nkeypoints = [
                 {

@@ -316,7 +316,7 @@ class OpenposeDetector:
             
             return results
     
-    def detect_poses_dw(self, oriImg) -> List[PoseResult]:
+    def detect_poses_dw(self, oriImg, include_hand = True, include_face = True) -> List[PoseResult]:
         """
         Detect poses in the given image using DW Pose:
         https://github.com/IDEA-Research/DWPose
@@ -332,8 +332,8 @@ class OpenposeDetector:
         self.load_dw_model()
 
         with torch.no_grad():
-            keypoints_info = self.dw_pose_estimation(oriImg.copy())
-            return Wholebody.format_result(keypoints_info)
+            keypoints_info = self.dw_pose_estimation(oriImg.copy(), include_hand, include_face)
+            return Wholebody.format_result(keypoints_info, include_hand, include_face)
 
     def __call__(
             self, oriImg, include_body=True, include_hand=False, include_face=False, 
@@ -356,7 +356,7 @@ class OpenposeDetector:
         H, W, _ = oriImg.shape
 
         if use_dw_pose:
-            poses = self.detect_poses_dw(oriImg)
+            poses = self.detect_poses_dw(oriImg, include_hand, include_face)
         else:
             poses = self.detect_poses(oriImg, include_hand, include_face)
 

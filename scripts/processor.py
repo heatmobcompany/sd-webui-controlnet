@@ -770,6 +770,14 @@ preprocessor_sliders_config = {
             "value": 512
         }
     ],
+        "dw_openpose_body": [
+        {
+            "name": flag_preprocessor_resolution,
+            "min": 64,
+            "max": 2048,
+            "value": 512
+        }
+    ],
     "segmentation": [
         {
             "name": flag_preprocessor_resolution,
