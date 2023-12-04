@@ -121,8 +121,8 @@ def decode_json_as_poses(json_string: str, normalize_coords: bool = False) -> Tu
     )
 
 
-def encode_poses_as_json(poses: List[PoseResult], canvas_height: int, canvas_width: int) -> str:
-    """ Encode the pose as a JSON string following openpose JSON output format:
+def encode_poses_as_json(poses: List[PoseResult], canvas_height: int, canvas_width: int) -> dict:
+    """ Encode the pose as a JSON compatible dict following openpose JSON output format:
     https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/02_output.md
     """
     def compress_keypoints(keypoints: Union[List[Keypoint], None]) -> Union[List[float], None]:
@@ -139,7 +139,7 @@ def encode_poses_as_json(poses: List[PoseResult], canvas_height: int, canvas_wid
             )
         ]
 
-    return json.dumps({
+    return {
         'people': [
             {
                 'pose_keypoints_2d': compress_keypoints(pose.body.keypoints),
@@ -151,7 +151,7 @@ def encode_poses_as_json(poses: List[PoseResult], canvas_height: int, canvas_wid
         ],
         'canvas_height': canvas_height,
         'canvas_width': canvas_width,
-    }, indent=4)
+    }
 
 class OpenposeDetector:
     """

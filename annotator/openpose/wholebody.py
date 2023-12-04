@@ -93,6 +93,14 @@ class Wholebody:
             ]
             new_keypoints = adjust_keypoints(nkeypoints)
 
+            # Openpose face consists of 70 points in total, while DWPose only
+            # provides 68 points. Padding the last 2 points.
+            if face is not None:
+                # left eye
+                face.append(body_keypoints[14])
+                # right eye
+                face.append(body_keypoints[15])
+
             body = BodyResult(
                 [
                     Keypoint(
