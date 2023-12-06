@@ -23,7 +23,7 @@ keypoint_names = [
 ]
 
 # Define standard ratio
-nose_to_neck_ratio = 1/2
+nose_to_neck_ratio = 1/2.2
 
 def calculate_distance(point1, point2):
     # Calculate the Euclidean distance between two points
