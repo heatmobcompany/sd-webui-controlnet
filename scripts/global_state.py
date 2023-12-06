@@ -65,7 +65,7 @@ cn_preprocessor_modules = {
     "openpose_faceonly": functools.partial(g_openpose_model.run_model, include_body=False, include_hand=False, include_face=True),
     "openpose_full": functools.partial(g_openpose_model.run_model, include_body=True, include_hand=True, include_face=True),
     "dw_openpose_full": functools.partial(g_openpose_model.run_model, include_body=True, include_hand=True, include_face=True, use_dw_pose=True),
-    "dw_openpose_body": functools.partial(g_openpose_model.run_model, include_body=True, include_hand=False, include_face=False, use_dw_pose=True),
+    "dw_openpose_body": functools.partial(g_openpose_model.run_model, include_body=True, include_hand=True, include_face=False, use_dw_pose=True),
     "clip_vision": functools.partial(clip, config='clip_vitl'),
     "revision_clipvision": functools.partial(clip, config='clip_g'),
     "revision_ignore_prompt": functools.partial(clip, config='clip_g'),
