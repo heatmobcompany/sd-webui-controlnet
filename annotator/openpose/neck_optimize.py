@@ -40,18 +40,25 @@ def adjust_keypoints(keypoints):
     # Find the indices of neck and nose in the keypoint_names list
     neck_index = keypoint_names.index("neck")
     nose_index = keypoint_names.index("nose")
+    righthip_index = keypoint_names.index("right_hip")
+    leftthip_index = keypoint_names.index("left_hip")
     
     keypoint_neck = keypoints[neck_index]
     keypoint_nose = keypoints[nose_index]
-    if keypoint_neck is None or keypoint_nose is None:
+    keypoint_righthip = keypoints[righthip_index]
+    keypoint_lefthip = keypoints[leftthip_index]
+    if keypoint_neck is None or keypoint_nose is None or keypoint_righthip is None or keypoint_lefthip is None:
         return keypoints
 
     # Calculate the distance from neck to nose
     d_neck_nose = calculate_distance(keypoint_neck, keypoint_nose)
     
     # Calculate the distance from neck to hip
-    d_neck_hip = calculate_distance(keypoint_neck, keypoints[keypoint_names.index("right_hip")])
-    
+    d_neck_hip = calculate_distance(keypoint_neck, {
+        "x": (keypoint_righthip["x"] + keypoint_lefthip["x"]) / 2,
+        "y": (keypoint_righthip["y"] + keypoint_lefthip["y"]) / 2,
+    })
+        
     # Calculate the rotation
     rotation = d_neck_nose / d_neck_hip
     
@@ -71,6 +78,8 @@ def adjust_keypoints(keypoints):
         # Apply the same translation vector to the eyes and ears
         for point_name in ["nose", "right_eye", "left_eye", "right_ear", "left_ear"]:
             point_index = keypoint_names.index(point_name)
+            if keypoints[point_index] is None:
+                continue
             keypoints[point_index]["x"] += translation_vector["x"]
             keypoints[point_index]["y"] += translation_vector["y"]
     
