@@ -45,7 +45,7 @@ def canny(img, res=512, thr_a=100, thr_b=200, **kwargs):
         from annotator.canny import apply_canny
         model_canny = apply_canny
     result = model_canny(img, l, h)
-    if True:
+    if False:
         print("HM remove canny edge")
         mask = np.any(img != [0, 0, 0], axis=-1)
         mask = mask.astype(np.uint8) * 255
