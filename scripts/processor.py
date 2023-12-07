@@ -45,6 +45,14 @@ def canny(img, res=512, thr_a=100, thr_b=200, **kwargs):
         from annotator.canny import apply_canny
         model_canny = apply_canny
     result = model_canny(img, l, h)
+    if True:
+        print("HM remove canny edge")
+        mask = np.any(img != [0, 0, 0], axis=-1)
+        mask = mask.astype(np.uint8) * 255
+        kernel = np.ones((3,3), np.uint8)
+        mask = cv2.erode(mask, kernel, iterations = 1)
+        result = cv2.bitwise_and(result, result, mask=mask)
+
     return remove_pad(result), True
 
 
