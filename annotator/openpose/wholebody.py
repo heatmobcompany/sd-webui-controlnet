@@ -113,7 +113,7 @@ class Wholebody:
                 ], total_score(body_keypoints), len(body_keypoints)
             )
             pose_results.append(PoseResult(body, left_hand, right_hand, face))
-            sort_values(d_neck_hip)
+            sort_values.append(d_neck_hip)
         
         # Sort the results by the distance from neck to hip
         combined_list = list(zip(pose_results, sort_values))
