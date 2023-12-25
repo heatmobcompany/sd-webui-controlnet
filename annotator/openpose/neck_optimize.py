@@ -48,7 +48,7 @@ def adjust_keypoints(keypoints):
     keypoint_righthip = keypoints[righthip_index]
     keypoint_lefthip = keypoints[leftthip_index]
     if keypoint_neck is None or keypoint_nose is None or keypoint_righthip is None or keypoint_lefthip is None:
-        return keypoints
+        return keypoints, 0
 
     # Calculate the distance from neck to nose
     d_neck_nose = calculate_distance(keypoint_neck, keypoint_nose)
@@ -83,4 +83,4 @@ def adjust_keypoints(keypoints):
             keypoints[point_index]["x"] += translation_vector["x"]
             keypoints[point_index]["y"] += translation_vector["y"]
     
-    return keypoints
+    return keypoints, d_neck_hip

@@ -76,6 +76,8 @@ class Wholebody:
             )
 
         pose_results = []
+        sort_values = []
+
         if keypoints_info is None:
             return pose_results
 
@@ -91,7 +93,7 @@ class Wholebody:
                     "y": keypoint.y,
                 } if keypoint is not None else None for keypoint in body_keypoints
             ]
-            new_keypoints = adjust_keypoints(nkeypoints)
+            new_keypoints, d_neck_hip = adjust_keypoints(nkeypoints)
 
             # Openpose face consists of 70 points in total, while DWPose only
             # provides 68 points. Padding the last 2 points.
@@ -111,5 +113,10 @@ class Wholebody:
                 ], total_score(body_keypoints), len(body_keypoints)
             )
             pose_results.append(PoseResult(body, left_hand, right_hand, face))
-
-        return pose_results
+            sort_values(d_neck_hip)
+        
+        # Sort the results by the distance from neck to hip
+        combined_list = list(zip(pose_results, sort_values))
+        combined_list.sort(key=lambda x: x[1], reverse=True)
+        sorted_results = [item[0] for item in combined_list]
+        return sorted_results

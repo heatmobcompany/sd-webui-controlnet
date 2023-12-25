@@ -288,6 +288,7 @@ class OpenposeDetector:
             bodies = self.body_estimation.format_body_result(candidate, subset)
 
             results = []
+            sort_values = []
             for body in bodies:
                 left_hand, right_hand, face = (None,) * 3
                 if include_hand:
@@ -300,7 +301,7 @@ class OpenposeDetector:
                         "y": keypoint.y,
                     } if keypoint is not None else None for keypoint in body.keypoints
                 ]
-                new_keypoints = adjust_keypoints(nkeypoints)
+                new_keypoints, d_neck_hip = adjust_keypoints(nkeypoints)
 
                 results.append(PoseResult(BodyResult(
                     keypoints=[
@@ -313,8 +314,13 @@ class OpenposeDetector:
                     total_score=body.total_score,
                     total_parts=body.total_parts
                 ), left_hand, right_hand, face))
-            
-            return results
+                sort_values.append(d_neck_hip)
+
+            # Sort the results by the distance from neck to hip
+            combined_list = list(zip(results, sort_values))
+            combined_list.sort(key=lambda x: x[1], reverse=True)
+            sorted_results = [item[0] for item in combined_list]
+            return sorted_results
     
     def detect_poses_dw(self, oriImg, include_hand = True, include_face = True) -> List[PoseResult]:
         """
