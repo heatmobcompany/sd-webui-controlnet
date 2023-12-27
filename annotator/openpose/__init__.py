@@ -344,6 +344,7 @@ class OpenposeDetector:
     def __call__(
             self, oriImg, include_body=True, include_hand=False, include_face=False, 
             use_dw_pose=False, json_pose_callback: Callable[[str], None] = None,
+            max_pose_count: int = 0,
             **kwargs
         ):
         """
@@ -366,6 +367,9 @@ class OpenposeDetector:
             poses = self.detect_poses_dw(oriImg, include_hand, include_face, **kwargs)
         else:
             poses = self.detect_poses(oriImg, include_hand, include_face)
+            
+        if max_pose_count > 0:
+            poses = poses[:max_pose_count]
 
         if json_pose_callback:
             json_pose_callback(encode_poses_as_json(poses, H, W))
