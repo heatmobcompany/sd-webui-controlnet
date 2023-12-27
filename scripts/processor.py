@@ -263,7 +263,8 @@ class OpenposeModel(object):
             include_hand=include_hand,
             include_face=include_face,
             use_dw_pose=use_dw_pose,
-            json_pose_callback=json_pose_callback
+            json_pose_callback=json_pose_callback,
+            **kwargs,
         )), True
 
     def unload(self):
@@ -779,6 +780,22 @@ preprocessor_sliders_config = {
         }
     ],
         "dw_openpose_body": [
+        {
+            "name": flag_preprocessor_resolution,
+            "min": 64,
+            "max": 2048,
+            "value": 512
+        }
+    ],
+        "dw_openpose_half_body_with_arm": [
+        {
+            "name": flag_preprocessor_resolution,
+            "min": 64,
+            "max": 2048,
+            "value": 512
+        }
+    ],
+        "dw_openpose_half_body_without_arm": [
         {
             "name": flag_preprocessor_resolution,
             "min": 64,

@@ -100,7 +100,8 @@ def generate_face(neck, d_neck_hip, standard_pose):
 
     return generated_face
 
-def adjust_keypoints(keypoints, add_face = True, add_arm = True, add_leg = True):
+def adjust_keypoints(keypoints, add_face = False, add_arm = False, add_leg = False, **kwargs):
+    print("Adjusting keypoints", add_face, add_arm, add_leg)
     # Find the indices of neck and nose in the keypoint_names list
     neck_index = keypoint_names.index("neck")
     nose_index = keypoint_names.index("nose")
@@ -111,63 +112,64 @@ def adjust_keypoints(keypoints, add_face = True, add_arm = True, add_leg = True)
     keypoint_nose = keypoints[nose_index]
     keypoint_righthip = keypoints[righthip_index]
     keypoint_lefthip = keypoints[leftthip_index]
-    if keypoint_neck is None or keypoint_nose is None or keypoint_righthip is None or keypoint_lefthip is None:
+    if keypoint_neck is None or keypoint_righthip is None or keypoint_lefthip is None:
         for keypoint in keypoint_names:
             index = keypoint_names.index(keypoint)
             keypoints[index] = standard_pose["pose"][keypoint]
         return keypoints, 0
 
-    # Calculate the distance from neck to nose
-    d_neck_nose = calculate_distance(keypoint_neck, keypoint_nose)
-    
     # Calculate the distance from neck to hip
     d_neck_hip = calculate_distance(keypoint_neck, {
         "x": (keypoint_righthip["x"] + keypoint_lefthip["x"]) / 2,
         "y": (keypoint_righthip["y"] + keypoint_lefthip["y"]) / 2,
     })
+
+    face_exist = True
+    face_keypoint = ["nose", "right_eye", "left_eye", "right_ear", "left_ear"]
+    for keypoint in face_keypoint:
+        index = keypoint_names.index(keypoint)
+        if not keypoints[index]:
+            face_exist = False
+            break
+
+    if face_exist and not add_face:
+        # Calculate the distance from neck to nose
+        d_neck_nose = calculate_distance(keypoint_neck, keypoint_nose)
         
-    # Calculate the rotation
-    rotation = d_neck_nose / d_neck_hip
-    
-    if rotation > nose_to_neck_ratio:
-        desired_d_neck_nose = nose_to_neck_ratio * d_neck_hip
-        scale_factor = desired_d_neck_nose / d_neck_nose
+        # Calculate the rotation
+        rotation = d_neck_nose / d_neck_hip
         
-        # Calculate the translation vector for the nose
-        translation_vector = calculate_translation_vector(
-            keypoint_nose,
-            {
-                "x": keypoint_neck["x"] + (keypoint_nose["x"] - keypoint_neck["x"]) * scale_factor,
-                "y": keypoint_neck["y"] + (keypoint_nose["y"] - keypoint_neck["y"]) * scale_factor,
-            }
-        )
-        
-        # Apply the same translation vector to the eyes and ears
-        for point_name in ["nose", "right_eye", "left_eye", "right_ear", "left_ear"]:
-            point_index = keypoint_names.index(point_name)
-            if keypoints[point_index] is None:
-                continue
-            keypoints[point_index]["x"] += translation_vector["x"]
-            keypoints[point_index]["y"] += translation_vector["y"]
+        if rotation > nose_to_neck_ratio:
+            desired_d_neck_nose = nose_to_neck_ratio * d_neck_hip
+            scale_factor = desired_d_neck_nose / d_neck_nose
+            
+            # Calculate the translation vector for the nose
+            translation_vector = calculate_translation_vector(
+                keypoint_nose,
+                {
+                    "x": keypoint_neck["x"] + (keypoint_nose["x"] - keypoint_neck["x"]) * scale_factor,
+                    "y": keypoint_neck["y"] + (keypoint_nose["y"] - keypoint_neck["y"]) * scale_factor,
+                }
+            )
+            
+            # Apply the same translation vector to the eyes and ears
+            for point_name in ["nose", "right_eye", "left_eye", "right_ear", "left_ear"]:
+                point_index = keypoint_names.index(point_name)
+                if keypoints[point_index] is None:
+                    continue
+                keypoints[point_index]["x"] += translation_vector["x"]
+                keypoints[point_index]["y"] += translation_vector["y"]
             
     if add_face:
         face_keypoint = ["nose", "right_eye", "left_eye", "right_ear", "left_ear"]
-        need_add_face = True
-        # for keypoint in face_keypoint:
-        #     index = keypoint_names.index(keypoint)
-        #     if keypoints[index] is None:
-        #         need_add_face = True
-        #         break
-        if need_add_face:
-            for keypoint in face_keypoint:
-                index = keypoint_names.index(keypoint)
-                keypoints[index] = generate_point_from_neck(keypoint, keypoints[neck_index], d_neck_hip, standard_pose)
-                
+        for keypoint in face_keypoint:
+            index = keypoint_names.index(keypoint)
+            keypoints[index] = generate_point_from_neck(keypoint, keypoints[neck_index], d_neck_hip, standard_pose)
+
     if add_arm:
         hand_keypoint = ["right_wrist", "right_elbow", "right_shoulder", "left_wrist", "left_elbow", "left_shoulder"]
         for keypoint in hand_keypoint:
             index = keypoint_names.index(keypoint)
-            # if keypoints[index] is None:
             keypoints[index] = generate_point_from_neck(keypoint, keypoints[neck_index], d_neck_hip, standard_pose)
                 
     if add_leg:

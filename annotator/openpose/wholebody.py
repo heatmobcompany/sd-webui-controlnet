@@ -56,7 +56,7 @@ class Wholebody:
         return keypoints_info
 
     @staticmethod
-    def format_result(keypoints_info: Optional[np.ndarray], include_hand = True, include_face = True) -> List[PoseResult]:
+    def format_result(keypoints_info: Optional[np.ndarray], include_hand = True, include_face = True, **kwargs) -> List[PoseResult]:
         def format_keypoint_part(
             part: np.ndarray,
         ) -> Optional[List[Optional[Keypoint]]]:
@@ -93,7 +93,7 @@ class Wholebody:
                     "y": keypoint.y,
                 } if keypoint is not None else None for keypoint in body_keypoints
             ]
-            new_keypoints, d_neck_hip = adjust_keypoints(nkeypoints)
+            new_keypoints, d_neck_hip = adjust_keypoints(nkeypoints, **kwargs)
 
             # Openpose face consists of 70 points in total, while DWPose only
             # provides 68 points. Padding the last 2 points.
