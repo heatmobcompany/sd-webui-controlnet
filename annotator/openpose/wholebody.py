@@ -7,7 +7,7 @@ from .cv_ox_pose import inference_pose
 
 from typing import List, Optional
 from .types import PoseResult, BodyResult, Keypoint
-from .neck_optimize import adjust_keypoints
+from .pose_optimize import adjust_keypoints
 
 
 class Wholebody:

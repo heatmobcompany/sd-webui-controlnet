@@ -9,7 +9,7 @@
 
 import os
 
-from .neck_optimize import adjust_keypoints
+from .pose_optimize import adjust_keypoints
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import json
