@@ -1,8 +1,23 @@
+import os
 import cv2
 import numpy as np
+import torch
 
 from annotator.util import HWC3
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Union, List
+
+from modules.safe import Extra
+from modules import devices
+from scripts.logging import logger
+
+
+def torch_handler(module: str, name: str):
+    """ Allow all torch access. Bypass A1111 safety whitelist. """
+    if module == 'torch':
+        return getattr(torch, name)
+    if module == 'torch._tensor':
+        # depth_anything dep.
+        return getattr(torch._tensor, name)
 
 
 def pad64(x):
@@ -176,6 +191,25 @@ def unload_mlsd():
         unload_mlsd_model()
 
 
+model_depth_anything = None
+
+
+def depth_anything(img, res:int = 512, colored:bool = True, **kwargs):
+    img, remove_pad = resize_image_with_pad(img, res)
+    global model_depth_anything
+    if model_depth_anything is None:
+        with Extra(torch_handler):
+            from annotator.depth_anything import DepthAnythingDetector
+            device = devices.get_device_for("controlnet")
+            model_depth_anything = DepthAnythingDetector(device)
+    return remove_pad(model_depth_anything(img, colored=colored)), True
+
+
+def unload_depth_anything():
+    if model_depth_anything is not None:
+        model_depth_anything.unload_model()
+
+
 model_midas = None
 
 
@@ -238,6 +272,7 @@ class OpenposeModel(object):
             include_hand: bool,
             include_face: bool,
             use_dw_pose: bool = False,
+            use_animal_pose: bool = False,
             json_pose_callback: Callable[[str], None] = None,
             res: int = 512,
             **kwargs  # Ignore rest of kwargs
@@ -263,6 +298,7 @@ class OpenposeModel(object):
             include_hand=include_hand,
             include_face=include_face,
             use_dw_pose=use_dw_pose,
+            use_animal_pose=use_animal_pose,
             json_pose_callback=json_pose_callback,
             **kwargs,
         )), True
@@ -352,12 +388,14 @@ clip_encoder = {
 }
 
 
-def clip(img, res=512, config='clip_vitl', **kwargs):
+def clip(img, res=512, config='clip_vitl', low_vram=False, **kwargs):
     img = HWC3(img)
     global clip_encoder
     if clip_encoder[config] is None:
         from annotator.clipvision import ClipVisionDetector
-        clip_encoder[config] = ClipVisionDetector(config)
+        if low_vram:
+            logger.info("Loading CLIP model on CPU.")
+        clip_encoder[config] = ClipVisionDetector(config, low_vram)
     result = clip_encoder[config](img)
     return result, False
 
@@ -649,6 +687,113 @@ def unload_anime_face_segment():
         model_anime_face_segment.unload_model()
 
 
+
+def densepose(img, res=512, cmap="viridis", **kwargs):
+    img, remove_pad = resize_image_with_pad(img, res)
+    from annotator.densepose import apply_densepose
+    result = apply_densepose(img, cmap=cmap)
+    return remove_pad(result), True
+
+
+def unload_densepose():
+    from annotator.densepose import unload_model
+    unload_model()
+
+model_te_hed = None
+
+def te_hed(img, res=512, thr_a=2, **kwargs):
+    img, remove_pad = resize_image_with_pad(img, res)
+    global model_te_hed
+    if model_te_hed is None:
+        from annotator.teed import TEEDDector
+        model_te_hed = TEEDDector()
+    result = model_te_hed(img, safe_steps=int(thr_a))
+    return remove_pad(result), True
+
+def unload_te_hed():
+    if model_te_hed is not None:
+        model_te_hed.unload_model()
+
+class InsightFaceModel:
+    def __init__(self):
+        self.model = None
+
+    def load_model(self):
+        if self.model is None:
+            from insightface.app import FaceAnalysis
+            from annotator.annotator_path import models_path
+            self.model = FaceAnalysis(
+                name="buffalo_l",
+                providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
+                root=os.path.join(models_path, "insightface"),
+            )
+            self.model.prepare(ctx_id=0, det_size=(640, 640))
+
+    def run_model(self, imgs: Union[Tuple[np.ndarray], np.ndarray], **kwargs):
+        self.load_model()
+        imgs = imgs if isinstance(imgs, tuple) else (imgs,)
+        faceid_embeds = []
+        for i, img in enumerate(imgs):
+            img = HWC3(img)
+            faces = self.model.get(img)
+            if not faces:
+                logger.warn(f"Insightface: No face found in image {i}.")
+                continue
+            if len(faces) > 1:
+                logger.warn("Insightface: More than one face is detected in the image. "
+                            f"Only the first one will be used {i}.")
+            faceid_embeds.append(torch.from_numpy(faces[0].normed_embedding).unsqueeze(0))
+        return faceid_embeds, False
+
+
+g_insight_face_model = InsightFaceModel()
+
+
+def face_id_plus(img, low_vram=False, **kwargs):
+    """ FaceID plus uses both face_embeding from insightface and clip_embeding from clip. """
+    face_embed, _ = g_insight_face_model.run_model(img)
+    clip_embed, _ = clip(img, config='clip_h', low_vram=low_vram)
+    assert len(face_embed) > 0
+    return (face_embed[0], clip_embed), False
+
+
+class HandRefinerModel:
+    def __init__(self):
+        self.model = None
+        self.device = devices.get_device_for("controlnet")
+
+    def load_model(self):
+        if self.model is None:
+            from annotator.annotator_path import models_path
+            from hand_refiner import MeshGraphormerDetector  # installed via hand_refiner_portable
+            with Extra(torch_handler):
+                self.model = MeshGraphormerDetector.from_pretrained(
+                    "hr16/ControlNet-HandRefiner-pruned",
+                    cache_dir=os.path.join(models_path, "hand_refiner"),
+                    device=self.device,
+                )
+        else:
+            self.model.to(self.device)
+
+    def unload(self):
+        if self.model is not None:
+            self.model.to("cpu")
+
+    def run_model(self, img, res=512, **kwargs):
+        img, remove_pad = resize_image_with_pad(img, res)
+        self.load_model()
+        with Extra(torch_handler):
+            depth_map, mask, info = self.model(
+                img, output_type="np",
+                detect_resolution=res,
+                mask_bbox_padding=30,
+            )
+        return remove_pad(depth_map), True
+
+
+g_hand_refiner_model = HandRefinerModel()
+
+
 model_free_preprocessors = [
     "reference_only",
     "reference_adain",
@@ -663,7 +808,10 @@ no_control_mode_preprocessors = [
     "clip_vision",
     "ip-adapter_clip_sd15",
     "ip-adapter_clip_sdxl",
-    "t2ia_style_clipvision"
+    "ip-adapter_clip_sdxl_plus_vith",
+    "t2ia_style_clipvision",
+    "ip-adapter_face_id",
+    "ip-adapter_face_id_plus",
 ]
 
 flag_preprocessor_resolution = "Preprocessor Resolution"
@@ -772,30 +920,6 @@ preprocessor_sliders_config = {
         }
     ],
     "dw_openpose_full": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-        "dw_openpose_body": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-        "dw_openpose_half_body_with_arm": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-        "dw_openpose_half_body_without_arm": [
         {
             "name": flag_preprocessor_resolution,
             "min": 64,
@@ -1047,6 +1171,45 @@ preprocessor_sliders_config = {
             "max": 2048
         }
     ],
+    "densepose": [
+        {
+            "name": flag_preprocessor_resolution,
+            "min": 64,
+            "max": 2048,
+            "value": 512
+        }
+    ],
+    "densepose_parula": [
+        {
+            "name": flag_preprocessor_resolution,
+            "min": 64,
+            "max": 2048,
+            "value": 512
+        }
+    ],
+    "depth_hand_refiner": [
+        {
+            "name": flag_preprocessor_resolution,
+            "value": 512,
+            "min": 64,
+            "max": 2048
+        } 
+    ],
+    "te_hed": [
+        {
+            "name": flag_preprocessor_resolution,
+            "value": 512,
+            "min": 64,
+            "max": 2048
+        },
+        {
+            "name": "Safe Steps",
+            "min": 0,
+            "max": 10,
+            "value": 2,
+            "step": 1,
+        },
+    ],
 }
 
 preprocessor_filters = {
@@ -1078,5 +1241,6 @@ preprocessor_filters_aliases = {
     't2i-adapter': ['t2i_adapter', 't2iadapter', 't2ia'],
     'ip-adapter': ['ip_adapter', 'ipadapter'],
     'scribble/sketch': ['scribble', 'sketch'],
-    'tile/blur': ['tile', 'blur']
+    'tile/blur': ['tile', 'blur'],
+    'openpose':['openpose', 'densepose'],
 }  # must use all lower texts

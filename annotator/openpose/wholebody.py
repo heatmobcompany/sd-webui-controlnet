@@ -6,7 +6,7 @@ from .cv_ox_det import inference_detector
 from .cv_ox_pose import inference_pose
 
 from typing import List, Optional
-from .types import PoseResult, BodyResult, Keypoint
+from .types import HumanPoseResult, BodyResult, Keypoint
 from .pose_optimize import adjust_keypoints
 
 
@@ -56,7 +56,7 @@ class Wholebody:
         return keypoints_info
 
     @staticmethod
-    def format_result(keypoints_info: Optional[np.ndarray], include_hand = True, include_face = True, **kwargs) -> List[PoseResult]:
+    def format_result(keypoints_info: Optional[np.ndarray], include_hand = True, include_face = True, **kwargs) -> List[HumanPoseResult]:
         def format_keypoint_part(
             part: np.ndarray,
         ) -> Optional[List[Optional[Keypoint]]]:
@@ -112,7 +112,7 @@ class Wholebody:
                     for keypoint in new_keypoints
                 ], total_score(body_keypoints), len(body_keypoints)
             )
-            pose_results.append(PoseResult(body, left_hand, right_hand, face))
+            pose_results.append(HumanPoseResult(body, left_hand, right_hand, face))
             sort_values.append(d_neck_hip)
         
         # Sort the results by the distance from neck to hip
