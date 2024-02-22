@@ -336,10 +336,12 @@ class Script(scripts.Script, metaclass=(
             raise ValueError(f"file not found: {model_path}")
 
         logger.info(f"Loading model: {model}")
+        t = time.time()
+
         state_dict = load_state_dict(model_path)
         network = build_model_by_guess(state_dict, unet, model_path)
         network.to('cpu', dtype=p.sd_model.dtype)
-        logger.info(f"ControlNet model {model} loaded.")
+        logger.info("ControlNet model {} loaded in {:.3f} second.".format(model, time.time() - t))
         return network
 
     @staticmethod

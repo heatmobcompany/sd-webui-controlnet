@@ -13,7 +13,7 @@ from modules.api import api
 from scripts import external_code, global_state
 from scripts.processor import preprocessor_filters
 from scripts.logging import logger
-
+import time
 
 def encode_to_base64(image):
     if type(image) is str:
@@ -95,6 +95,8 @@ def controlnet_api(_: gr.Blocks, app: FastAPI):
         controlnet_threshold_a: float = Body(64, title="Controlnet Threshold a"),
         controlnet_threshold_b: float = Body(64, title="Controlnet Threshold b"),
     ):
+        logger.info(f"===== API /controlnet/detect start =====")
+        start_time = time.time()
         controlnet_module = global_state.reverse_preprocessor_aliases.get(
             controlnet_module, controlnet_module
         )
@@ -146,6 +148,7 @@ def controlnet_api(_: gr.Blocks, app: FastAPI):
         if poses:
             res["poses"] = poses
 
+        logger.info("===== API /controlnet/detect end in {:.3f} seconds =====".format(time.time() - start_time))
         return res
 
 
