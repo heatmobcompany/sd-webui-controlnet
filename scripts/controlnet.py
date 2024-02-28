@@ -303,14 +303,14 @@ class Script(scripts.Script, metaclass=(
             return Script.model_cache[model]
 
         # Remove model from cache to clear space before building another model
-        if len(Script.model_cache) > 0 and len(Script.model_cache) >= shared.opts.data.get("control_net_model_cache_size", 2):
+        if len(Script.model_cache) > 0 and len(Script.model_cache) >= shared.opts.data.get("control_net_model_cache_size", 3):
             Script.model_cache.popitem(last=False)
             gc.collect()
             devices.torch_gc()
 
         model_net = Script.build_control_model(p, unet, model)
 
-        if shared.opts.data.get("control_net_model_cache_size", 2) > 0:
+        if shared.opts.data.get("control_net_model_cache_size", 3) > 0:
             Script.model_cache[model] = model_net
 
         return model_net
@@ -1107,7 +1107,7 @@ def on_ui_settings():
     shared.opts.add_option("control_net_unit_count", shared.OptionInfo(
         3, "Multi-ControlNet: ControlNet unit number (requires restart)", gr.Slider, {"minimum": 1, "maximum": 10, "step": 1}, section=section))
     shared.opts.add_option("control_net_model_cache_size", shared.OptionInfo(
-        1, "Model cache size (requires restart)", gr.Slider, {"minimum": 1, "maximum": 10, "step": 1}, section=section))
+        3, "Model cache size (requires restart)", gr.Slider, {"minimum": 1, "maximum": 10, "step": 1}, section=section))
     shared.opts.add_option("control_net_inpaint_blur_sigma", shared.OptionInfo(
         7, "ControlNet inpainting Gaussian blur sigma", gr.Slider, {"minimum": 0, "maximum": 64, "step": 1}, section=section))
     shared.opts.add_option("control_net_no_high_res_fix", shared.OptionInfo(
