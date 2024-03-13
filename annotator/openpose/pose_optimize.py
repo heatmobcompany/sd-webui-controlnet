@@ -100,7 +100,7 @@ def generate_face(neck, d_neck_hip, standard_pose):
 
     return generated_face
 
-def adjust_keypoints(keypoints, add_face = False, add_arm = False, add_leg = False, **kwargs):
+def adjust_keypoints(keypoints, fix_neck = False, add_face = False, add_arm = False, add_leg = False, **kwargs):
     print("Adjusting keypoints", add_face, add_arm, add_leg)
     # Find the indices of neck and nose in the keypoint_names list
     neck_index = keypoint_names.index("neck")
@@ -132,7 +132,7 @@ def adjust_keypoints(keypoints, add_face = False, add_arm = False, add_leg = Fal
             face_exist = False
             break
 
-    if face_exist and not add_face:
+    if fix_neck and face_exist and not add_face:
         # Calculate the distance from neck to nose
         d_neck_nose = calculate_distance(keypoint_neck, keypoint_nose)
         
