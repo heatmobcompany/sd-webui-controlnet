@@ -312,7 +312,7 @@ class Script(scripts.Script, metaclass=(
 
         is_cache = False
         for i in shared.opts.data.get("control_net_model_cache_items", "").split(","):
-            if i in model:
+            if i in str(model):
                 is_cache = True
                 break
         if is_cache:
