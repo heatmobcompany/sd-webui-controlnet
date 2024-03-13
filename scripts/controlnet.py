@@ -303,14 +303,20 @@ class Script(scripts.Script, metaclass=(
             return Script.model_cache[model]
 
         # Remove model from cache to clear space before building another model
-        if len(Script.model_cache) > 0 and len(Script.model_cache) >= shared.opts.data.get("control_net_model_cache_size", 3):
-            Script.model_cache.popitem(last=False)
-            gc.collect()
-            devices.torch_gc()
+        # if len(Script.model_cache) > 0 and len(Script.model_cache) >= shared.opts.data.get("control_net_model_cache_size", 3):
+        #     Script.model_cache.popitem(last=False)
+        #     gc.collect()
+        #     devices.torch_gc()
 
         model_net = Script.build_control_model(p, unet, model)
 
-        if shared.opts.data.get("control_net_model_cache_size", 3) > 0:
+        is_cache = False
+        for i in shared.opts.data.get("control_net_model_cache_items", "").split(","):
+            if i in model:
+                is_cache = True
+                break
+        if is_cache:
+            logger.warning(f"controlnet cached model: {model}")
             Script.model_cache[model] = model_net
 
         return model_net
@@ -676,8 +682,8 @@ class Script(scripts.Script, metaclass=(
         post_processors = []
 
         # cache stuff
-        if self.latest_model_hash != p.sd_model.sd_model_hash:
-            Script.clear_control_model_cache()
+        # if self.latest_model_hash != p.sd_model.sd_model_hash:
+        #     Script.clear_control_model_cache()
 
         for idx, unit in enumerate(self.enabled_units):
             unit.module = global_state.get_module_basename(unit.module)
@@ -1108,6 +1114,9 @@ def on_ui_settings():
         3, "Multi-ControlNet: ControlNet unit number (requires restart)", gr.Slider, {"minimum": 1, "maximum": 10, "step": 1}, section=section))
     shared.opts.add_option("control_net_model_cache_size", shared.OptionInfo(
         3, "Model cache size (requires restart)", gr.Slider, {"minimum": 1, "maximum": 10, "step": 1}, section=section))
+    shared.opts.add_option("control_net_model_cache_items", shared.OptionInfo(
+        "control_v11p_sd15_openpose,control_v11p_sd15_canny,ip-adapter_sd15_plus",
+        "Model cache items (requires restart)",  gr.Textbox, lambda: { "interactive": False, "visible": True}, section=section))
     shared.opts.add_option("control_net_inpaint_blur_sigma", shared.OptionInfo(
         7, "ControlNet inpainting Gaussian blur sigma", gr.Slider, {"minimum": 0, "maximum": 64, "step": 1}, section=section))
     shared.opts.add_option("control_net_no_high_res_fix", shared.OptionInfo(
