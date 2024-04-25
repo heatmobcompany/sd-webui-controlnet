@@ -269,8 +269,9 @@ class OpenposeModel(object):
         )), True
 
     def unload(self):
-        if self.model_openpose is not None:
-            self.model_openpose.unload_model()
+        logger.debug("Not unloading Openpose model.")
+        # if self.model_openpose is not None:
+        #     self.model_openpose.unload_model()
 
 
 g_openpose_model = OpenposeModel()
@@ -784,7 +785,7 @@ preprocessor_sliders_config = {
             "value": 512
         }
     ],
-        "dw_openpose_body": [
+    "dw_openpose_body": [
         {
             "name": flag_preprocessor_resolution,
             "min": 64,
@@ -792,7 +793,7 @@ preprocessor_sliders_config = {
             "value": 512
         }
     ],
-        "dw_openpose_half_body_with_arm": [
+    "dw_openpose_body2": [
         {
             "name": flag_preprocessor_resolution,
             "min": 64,
@@ -800,7 +801,15 @@ preprocessor_sliders_config = {
             "value": 512
         }
     ],
-        "dw_openpose_half_body_without_arm": [
+    "dw_openpose_half_body_with_arm": [
+        {
+            "name": flag_preprocessor_resolution,
+            "min": 64,
+            "max": 2048,
+            "value": 512
+        }
+    ],
+    "dw_openpose_half_body_without_arm": [
         {
             "name": flag_preprocessor_resolution,
             "min": 64,
