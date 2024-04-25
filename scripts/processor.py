@@ -3,6 +3,7 @@ import numpy as np
 
 from annotator.util import HWC3
 from typing import Callable, Tuple
+from scripts.logging import logger
 
 
 def pad64(x):
@@ -367,6 +368,10 @@ def unload_clip(config='clip_vitl'):
     if clip_encoder[config] is not None:
         clip_encoder[config].unload_model()
         clip_encoder[config] = None
+
+
+def not_unload_clip(config='clip_vitl'):
+    logger.debug(f"Not unload CLIP with config: {config}")
 
 
 model_color = None
