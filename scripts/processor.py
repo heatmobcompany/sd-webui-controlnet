@@ -60,6 +60,14 @@ def canny(img, res=512, thr_a=100, thr_b=200, **kwargs):
         from annotator.canny import apply_canny
         model_canny = apply_canny
     result = model_canny(img, l, h)
+    if False:
+        print("HM remove canny edge")
+        mask = np.any(img != [0, 0, 0], axis=-1)
+        mask = mask.astype(np.uint8) * 255
+        kernel = np.ones((3,3), np.uint8)
+        mask = cv2.erode(mask, kernel, iterations = 1)
+        result = cv2.bitwise_and(result, result, mask=mask)
+
     return remove_pad(result), True
 
 
@@ -291,12 +299,14 @@ class OpenposeModel(object):
             include_face=include_face,
             use_dw_pose=use_dw_pose,
             use_animal_pose=use_animal_pose,
-            json_pose_callback=json_pose_callback
+            json_pose_callback=json_pose_callback,
+            **kwargs,
         )), True
 
     def unload(self):
-        if self.model_openpose is not None:
-            self.model_openpose.unload_model()
+        logger.debug("Not unloading Openpose model.")
+        # if self.model_openpose is not None:
+        #     self.model_openpose.unload_model()
 
 
 g_openpose_model = OpenposeModel()
@@ -396,6 +406,10 @@ def unload_clip(config='clip_vitl'):
     if clip_encoder[config] is not None:
         clip_encoder[config].unload_model()
         clip_encoder[config] = None
+
+
+def not_unload_clip(config='clip_vitl'):
+    logger.debug(f"Not unload CLIP with config: {config}")
 
 
 model_color = None
@@ -919,6 +933,38 @@ preprocessor_sliders_config = {
         }
     ],
     "animal_openpose": [
+        {
+            "name": flag_preprocessor_resolution,
+            "min": 64,
+            "max": 2048,
+            "value": 512
+        }
+    ],
+    "dw_openpose_body": [
+        {
+            "name": flag_preprocessor_resolution,
+            "min": 64,
+            "max": 2048,
+            "value": 512
+        }
+    ],
+    "dw_openpose_body2": [
+        {
+            "name": flag_preprocessor_resolution,
+            "min": 64,
+            "max": 2048,
+            "value": 512
+        }
+    ],
+    "dw_openpose_half_body_with_arm": [
+        {
+            "name": flag_preprocessor_resolution,
+            "min": 64,
+            "max": 2048,
+            "value": 512
+        }
+    ],
+    "dw_openpose_half_body_without_arm": [
         {
             "name": flag_preprocessor_resolution,
             "min": 64,

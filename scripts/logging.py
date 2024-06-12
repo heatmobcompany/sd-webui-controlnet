@@ -22,20 +22,23 @@ class ColoredFormatter(logging.Formatter):
         colored_record.levelname = f"{seq}{levelname}{self.COLORS['RESET']}"
         return super().format(colored_record)
 
+try:
+    from helper.logging import Logger
+    logger = Logger("ControlNet")
+except Exception:
+    # Create a new logger
+    logger = logging.getLogger("ControlNet")
+    logger.propagate = False
 
-# Create a new logger
-logger = logging.getLogger("ControlNet")
-logger.propagate = False
+    # Add handler if we don't have one.
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            ColoredFormatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
+        logger.addHandler(handler)
 
-# Add handler if we don't have one.
-if not logger.handlers:
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
-        ColoredFormatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
-    logger.addHandler(handler)
-
-# Configure logger
-loglevel_string = getattr(shared.cmd_opts, "controlnet_loglevel", "INFO")
-loglevel = getattr(logging, loglevel_string.upper(), None)
-logger.setLevel(loglevel)
+    # Configure logger
+    loglevel_string = getattr(shared.cmd_opts, "controlnet_loglevel", "INFO")
+    loglevel = getattr(logging, loglevel_string.upper(), None)
+    logger.setLevel(loglevel)

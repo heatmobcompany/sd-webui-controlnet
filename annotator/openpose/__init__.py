@@ -9,6 +9,7 @@
 
 import os
 
+from .pose_optimize import adjust_keypoints
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import torch
@@ -347,36 +348,41 @@ class OpenposeDetector:
             bodies = self.body_estimation.format_body_result(candidate, subset)
 
             results = []
+            sort_values = []
             for body in bodies:
                 left_hand, right_hand, face = (None,) * 3
                 if include_hand:
                     left_hand, right_hand = self.detect_hands(body, oriImg)
                 if include_face:
                     face = self.detect_face(body, oriImg)
+                nkeypoints = [
+                    {
+                        "x": keypoint.x,
+                        "y": keypoint.y,
+                    } if keypoint is not None else None for keypoint in body.keypoints
+                ]
+                new_keypoints, d_neck_hip = adjust_keypoints(nkeypoints)
 
-                results.append(
-                    HumanPoseResult(
-                        BodyResult(
-                            keypoints=[
-                                Keypoint(
-                                    x=keypoint.x / float(W), y=keypoint.y / float(H)
-                                )
-                                if keypoint is not None
-                                else None
-                                for keypoint in body.keypoints
-                            ],
-                            total_score=body.total_score,
-                            total_parts=body.total_parts,
-                        ),
-                        left_hand,
-                        right_hand,
-                        face,
-                    )
-                )
+                results.append(HumanPoseResult(BodyResult(
+                    keypoints=[
+                        Keypoint(
+                            x=keypoint["x"] / float(W),
+                            y=keypoint["y"] / float(H)
+                        ) if keypoint is not None else None
+                        for keypoint in new_keypoints
+                    ], 
+                    total_score=body.total_score,
+                    total_parts=body.total_parts
+                ), left_hand, right_hand, face))
+                sort_values.append(d_neck_hip)
 
-            return results
-
-    def detect_poses_dw(self, oriImg) -> List[HumanPoseResult]:
+            # Sort the results by the distance from neck to hip
+            combined_list = list(zip(results, sort_values))
+            combined_list.sort(key=lambda x: x[1], reverse=True)
+            sorted_results = [item[0] for item in combined_list]
+            return sorted_results
+    
+    def detect_poses_dw(self, oriImg, include_hand = True, include_face = True, **kwargs) -> List[HumanPoseResult]:
         """
         Detect poses in the given image using DW Pose:
         https://github.com/IDEA-Research/DWPose
@@ -392,8 +398,8 @@ class OpenposeDetector:
         self.load_dw_model()
 
         with torch.no_grad():
-            keypoints_info = self.dw_pose_estimation(oriImg.copy())
-            return Wholebody.format_result(keypoints_info)
+            keypoints_info = self.dw_pose_estimation(oriImg.copy(), include_hand, include_face)
+            return Wholebody.format_result(keypoints_info, include_hand, include_face, **kwargs)
 
     def detect_poses_animal(self, oriImg) -> List[AnimalPoseResult]:
         """
@@ -421,6 +427,8 @@ class OpenposeDetector:
         use_dw_pose=False,
         use_animal_pose=False,
         json_pose_callback: Callable[[str], None] = None,
+        max_pose_count: int = 0,
+        **kwargs,
     ):
         """
         Detect and draw poses in the given image.
@@ -442,9 +450,12 @@ class OpenposeDetector:
         if use_animal_pose:
             animals = self.detect_poses_animal(oriImg)
         elif use_dw_pose:
-            poses = self.detect_poses_dw(oriImg)
+            poses = self.detect_poses_dw(oriImg, include_hand, include_face, **kwargs)
         else:
             poses = self.detect_poses(oriImg, include_hand, include_face)
+            
+        if max_pose_count > 0:
+            poses = poses[:max_pose_count]
 
         if json_pose_callback:
             json_pose_callback(encode_poses_as_json(poses, animals, H, W))

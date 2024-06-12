@@ -18,6 +18,7 @@ from scripts.logging import logger
 from annotator.openpose import draw_poses, decode_json_as_poses
 from annotator.openpose.animalpose import draw_animalposes
 
+import time
 
 def encode_to_base64(image):
     if isinstance(image, str):
@@ -100,6 +101,8 @@ def controlnet_api(_: gr.Blocks, app: FastAPI):
         controlnet_threshold_b: float = Body(64, title="Controlnet Threshold b"),
         low_vram: bool = Body(False, title="Low vram"),
     ):
+        logger.info(f"===== API /controlnet/detect start =====")
+        start_time = time.time()
         controlnet_module = global_state.reverse_preprocessor_aliases.get(
             controlnet_module, controlnet_module
         )
@@ -152,6 +155,7 @@ def controlnet_api(_: gr.Blocks, app: FastAPI):
         if poses:
             res["poses"] = poses
 
+        logger.info("===== API /controlnet/detect end in {:.3f} seconds =====".format(time.time() - start_time))
         return res
 
     class Person(BaseModel):

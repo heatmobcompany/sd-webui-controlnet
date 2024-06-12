@@ -7,6 +7,7 @@ from .cv_ox_pose import inference_pose
 
 from typing import List, Optional
 from .types import HumanPoseResult, BodyResult, Keypoint
+from .pose_optimize import adjust_keypoints
 
 
 class Wholebody:
@@ -25,7 +26,7 @@ class Wholebody:
         self.session_pose.setPreferableBackend(backend)
         self.session_pose.setPreferableTarget(providers)
     
-    def __call__(self, oriImg) -> Optional[np.ndarray]:
+    def __call__(self, oriImg, include_hand = True, include_face = True) -> Optional[np.ndarray]:
         det_result = inference_detector(self.session_det, oriImg)
         if det_result is None:
             return None
@@ -55,7 +56,7 @@ class Wholebody:
         return keypoints_info
 
     @staticmethod
-    def format_result(keypoints_info: Optional[np.ndarray]) -> List[HumanPoseResult]:
+    def format_result(keypoints_info: Optional[np.ndarray], include_hand = True, include_face = True, **kwargs) -> List[HumanPoseResult]:
         def format_keypoint_part(
             part: np.ndarray,
         ) -> Optional[List[Optional[Keypoint]]]:
@@ -75,14 +76,24 @@ class Wholebody:
             )
 
         pose_results = []
+        sort_values = []
+
         if keypoints_info is None:
             return pose_results
 
         for instance in keypoints_info:
             body_keypoints = format_keypoint_part(instance[:18]) or ([None] * 18)
-            left_hand = format_keypoint_part(instance[92:113])
-            right_hand = format_keypoint_part(instance[113:134])
-            face = format_keypoint_part(instance[24:92])
+            left_hand = format_keypoint_part(instance[92:113]) if include_hand else None
+            right_hand = format_keypoint_part(instance[113:134]) if include_hand else None
+            face = format_keypoint_part(instance[24:92]) if include_face else None
+            
+            nkeypoints = [
+                {
+                    "x": keypoint.x,
+                    "y": keypoint.y,
+                } if keypoint is not None else None for keypoint in body_keypoints
+            ]
+            new_keypoints, d_neck_hip = adjust_keypoints(nkeypoints, **kwargs)
 
             # Openpose face consists of 70 points in total, while DWPose only
             # provides 68 points. Padding the last 2 points.
@@ -93,8 +104,19 @@ class Wholebody:
                 face.append(body_keypoints[15])
 
             body = BodyResult(
-                body_keypoints, total_score(body_keypoints), len(body_keypoints)
+                [
+                    Keypoint(
+                        x=keypoint["x"],
+                        y=keypoint["y"],
+                    ) if keypoint is not None else None
+                    for keypoint in new_keypoints
+                ], total_score(body_keypoints), len(body_keypoints)
             )
             pose_results.append(HumanPoseResult(body, left_hand, right_hand, face))
-
-        return pose_results
+            sort_values.append(d_neck_hip)
+        
+        # Sort the results by the distance from neck to hip
+        combined_list = list(zip(pose_results, sort_values))
+        combined_list.sort(key=lambda x: x[1], reverse=True)
+        sorted_results = [item[0] for item in combined_list]
+        return sorted_results
