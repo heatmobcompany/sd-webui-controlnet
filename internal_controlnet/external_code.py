@@ -134,7 +134,7 @@ def pixel_perfect_resolution(
     else:
         estimation = max(k0, k1) * float(min(raw_H, raw_W))
 
-    logger.debug(f"Pixel Perfect Computation:")
+    logger.debug("Pixel Perfect Computation:")
     logger.debug(f"resize_mode = {resize_mode}")
     logger.debug(f"raw_H = {raw_H}")
     logger.debug(f"raw_W = {raw_W}")
@@ -201,7 +201,42 @@ class ControlNetUnit:
 
     def accepts_multiple_inputs(self) -> bool:
         """This unit can accept multiple input images."""
-        return False
+        return self.module in (
+            "ip-adapter_clip_sdxl",
+            "ip-adapter_clip_sdxl_plus_vith",
+            "ip-adapter_clip_sd15",
+            "ip-adapter_face_id",
+            "ip-adapter_face_id_plus",
+            "instant_id_face_embedding",
+        )
+
+    @staticmethod
+    def infotext_excluded_fields() -> List[str]:
+        return [
+            "image",
+            "enabled",
+            # Note: "advanced_weighting" is excluded as it is an API-only field.
+            "advanced_weighting",
+            # Note: "inpaint_crop_image" is img2img inpaint only flag, which does not
+            # provide much information when restoring the unit.
+            "inpaint_crop_input_image",
+        ]
+
+    @property
+    def is_animate_diff_batch(self) -> bool:
+        return getattr(self, "animatediff_batch", False)
+
+    @property
+    def uses_clip(self) -> bool:
+        """Whether this unit uses clip preprocessor."""
+        return any((
+            ("ip-adapter" in self.module and "faceid" not in self.module),
+            self.module in ("clip_vision", "revision_clipvision", "revision_ignore_prompt"),
+        ))
+
+    @property
+    def is_inpaint(self) -> bool:
+        return "inpaint" in self.module
 
 
 def to_base64_nparray(encoding: str):
@@ -325,6 +360,10 @@ def to_processing_unit(unit: Union[Dict[str, Any], ControlNetUnit]) -> ControlNe
         if 'mask' in unit:
             mask = unit['mask']
             del unit['mask']
+
+        if "mask_image" in unit:
+            mask = unit["mask_image"]
+            del unit["mask_image"]
 
         if 'image' in unit and not isinstance(unit['image'], dict):
             unit['image'] = {'image': unit['image'], 'mask': mask} if mask is not None else unit['image'] if unit[

@@ -63,13 +63,19 @@ def install_requirements(req_file):
                 )
 
 
-def try_install_from_wheel(pkg_name: str, wheel_url: str):
-    if get_installed_version(pkg_name) is not None:
-        return
+def try_install_from_wheel(pkg_name: str, wheel_url: str, version: Optional[str] = None):
+    current_version = get_installed_version(pkg_name)
+    if current_version is not None:
+        # No version requirement.
+        if version is None:
+            return
+        # Version requirement already satisfied.
+        if comparable_version(current_version) >= comparable_version(version):
+            return
 
     try:
         launch.run_pip(
-            f"install {wheel_url}",
+            f"install -U {wheel_url}",
             f"sd-webui-controlnet requirement: {pkg_name}",
         )
     except Exception as e:
@@ -132,14 +138,23 @@ try_install_from_wheel(
     "handrefinerportable",
     wheel_url=os.environ.get(
         "HANDREFINER_WHEEL",
-        "https://github.com/huchenlei/HandRefinerPortable/releases/download/v1.0.0/handrefinerportable-2024.1.18.0-py2.py3-none-any.whl",
+        "https://github.com/huchenlei/HandRefinerPortable/releases/download/v1.0.1/handrefinerportable-2024.2.12.0-py2.py3-none-any.whl",
     ),
+    version="2024.2.12.0",
 )
 try_install_from_wheel(
     "depth_anything",
     wheel_url=os.environ.get(
         "DEPTH_ANYTHING_WHEEL",
         "https://github.com/huchenlei/Depth-Anything/releases/download/v1.0.0/depth_anything-2024.1.22.0-py2.py3-none-any.whl",
+    ),
+)
+
+try_install_from_wheel(
+    "dsine",
+    wheel_url=os.environ.get(
+        "DSINE_WHEEL",
+        "https://github.com/sdbds/DSINE/releases/download/1.0.2/dsine-2024.3.23-py3-none-any.whl",
     ),
 )
 try_remove_legacy_submodule()

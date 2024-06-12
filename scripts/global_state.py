@@ -5,7 +5,7 @@ from collections import OrderedDict
 
 from modules import shared, scripts, sd_models
 from modules.paths import models_path
-from scripts.processor import *
+from scripts.processor import *  # noqa: E403
 import scripts.processor as processor
 from scripts.utils import ndarray_lru_cache
 from scripts.logging import logger
@@ -81,6 +81,8 @@ cn_preprocessor_modules = {
     "ip-adapter_clip_sdxl": functools.partial(clip, config='clip_g'),
     "ip-adapter_face_id": g_insight_face_model.run_model,
     "ip-adapter_face_id_plus": face_id_plus,
+    "instant_id_face_keypoints": functools.partial(g_insight_face_instant_id_model.run_model_instant_id, return_keypoints=True),
+    "instant_id_face_embedding": functools.partial(g_insight_face_instant_id_model.run_model_instant_id, return_keypoints=False),
     "color": color,
     "pidinet": pidinet,
     "pidinet_safe": pidinet_safe,
@@ -117,6 +119,7 @@ cn_preprocessor_modules = {
     "densepose": functools.partial(densepose, cmap="viridis"),
     "densepose_parula": functools.partial(densepose, cmap="parula"),
     "te_hed":te_hed,
+    "normal_dsine": normal_dsine,
 }
 
 cn_preprocessor_unloadable = {
@@ -161,6 +164,7 @@ cn_preprocessor_unloadable = {
     "densepose_parula": unload_densepose,
     "depth_hand_refiner": g_hand_refiner_model.unload,
     "te_hed":unload_te_hed,
+    "normal_dsine": unload_normal_dsine,
 }
 
 preprocessor_aliases = {
@@ -185,9 +189,15 @@ preprocessor_aliases = {
     "densepose": "densepose (pruple bg & purple torso)",
     "densepose_parula": "densepose_parula (black bg & blue torso)",
     "te_hed": "softedge_teed",
+    "ip-adapter_clip_sd15": "ip-adapter_clip_h",
+    "ip-adapter_clip_sdxl": "ip-adapter_clip_g",
 }
 
+# Preprocessor that automatically maps to other preprocessors.
+meta_preprocessors = ["ip-adapter-auto"]
+
 ui_preprocessor_keys = ['none', preprocessor_aliases['invert']]
+ui_preprocessor_keys += meta_preprocessors
 ui_preprocessor_keys += sorted([preprocessor_aliases.get(k, k)
                                 for k in cn_preprocessor_modules.keys()
                                 if preprocessor_aliases.get(k, k) not in ui_preprocessor_keys])
@@ -274,14 +284,25 @@ def update_cn_models():
 
 
 def get_sd_version() -> StableDiffusionVersion:
-    if shared.sd_model.is_sdxl:
-        return StableDiffusionVersion.SDXL
-    elif shared.sd_model.is_sd2:
-        return StableDiffusionVersion.SD2x
-    elif shared.sd_model.is_sd1:
-        return StableDiffusionVersion.SD1x
+    if hasattr(shared.sd_model, 'is_sdxl'):
+        if shared.sd_model.is_sdxl:
+            return StableDiffusionVersion.SDXL
+        elif shared.sd_model.is_sd2:
+            return StableDiffusionVersion.SD2x
+        elif shared.sd_model.is_sd1:
+            return StableDiffusionVersion.SD1x
+        else:
+            return StableDiffusionVersion.UNKNOWN
+
+    # backward compability for webui < 1.5.0
     else:
-        return StableDiffusionVersion.UNKNOWN
+        if hasattr(shared.sd_model, 'conditioner'):
+            return StableDiffusionVersion.SDXL
+        elif hasattr(shared.sd_model.cond_stage_model, 'model'):
+            return StableDiffusionVersion.SD2x
+        else:
+            return StableDiffusionVersion.SD1x
+
 
 
 def select_control_type(
@@ -316,6 +337,10 @@ def select_control_type(
         filtered_preprocessor_list += [
             x for x in preprocessor_list if "invert" in x.lower()
         ]
+    if pattern in ["sparsectrl"]:
+        filtered_preprocessor_list += [
+            x for x in preprocessor_list if "scribble" in x.lower()
+        ]
     filtered_model_list = [
         model for model in all_models
         if model.lower() == "none" or
@@ -344,22 +369,3 @@ def select_control_type(
         default_option,
         default_model
     )
-
-
-ip_adapter_pairing_model = {
-    "ip-adapter_clip_sdxl": lambda model: "faceid" not in model and "vit" not in model,
-    "ip-adapter_clip_sdxl_plus_vith": lambda model: "faceid" not in model and "vit" in model,
-    "ip-adapter_clip_sd15": lambda model: "faceid" not in model,
-    "ip-adapter_face_id": lambda model: "faceid" in model and "plus" not in model,
-    "ip-adapter_face_id_plus": lambda model: "faceid" in model and "plus" in model,
-}
-
-ip_adapter_pairing_logic_text = """
-{
-    "ip-adapter_clip_sdxl": lambda model: "faceid" not in model and "vit" not in model,
-    "ip-adapter_clip_sdxl_plus_vith": lambda model: "faceid" not in model and "vit" in model,
-    "ip-adapter_clip_sd15": lambda model: "faceid" not in model,
-    "ip-adapter_face_id": lambda model: "faceid" in model and "plus" not in model,
-    "ip-adapter_face_id_plus": lambda model: "faceid" in model and "plus" in model,
-}
-"""

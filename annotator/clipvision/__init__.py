@@ -1,12 +1,18 @@
 import os
 import cv2
 import torch
+import numpy as np
 
+from einops import rearrange
 from modules import devices
-from modules.modelloader import load_file_from_url
 from annotator.annotator_path import models_path
 from transformers import CLIPVisionModelWithProjection, CLIPVisionConfig, CLIPImageProcessor
 
+try:
+    from modules.modelloader import load_file_from_url
+except ImportError:
+    # backward compability for webui < 1.5.0
+    from scripts.utils import load_file_from_url
 
 config_clip_g = {
   "attention_dropout": 0.0,
@@ -79,10 +85,10 @@ downloads = {
 
 
 clip_vision_h_uc = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'clip_vision_h_uc.data')
-clip_vision_h_uc = torch.load(clip_vision_h_uc,  map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))['uc']
+clip_vision_h_uc = torch.load(clip_vision_h_uc,  map_location=devices.get_device_for("controlnet") if torch.cuda.is_available() else torch.device('cpu'))['uc']
 
 clip_vision_vith_uc = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'clip_vision_vith_uc.data')
-clip_vision_vith_uc = torch.load(clip_vision_vith_uc, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))['uc']
+clip_vision_vith_uc = torch.load(clip_vision_vith_uc, map_location=devices.get_device_for("controlnet") if torch.cuda.is_available() else torch.device('cpu'))['uc']
 
 
 class ClipVisionDetector:
@@ -122,11 +128,20 @@ class ClipVisionDetector:
         if self.model is not None:
             self.model.to('meta')
 
-    def __call__(self, input_image):
+    def __call__(self, input_image: np.ndarray):
+        assert isinstance(input_image, np.ndarray)
         with torch.no_grad():
+            mask = None
             input_image = cv2.resize(input_image, (224, 224), interpolation=cv2.INTER_AREA)
+            if input_image.shape[2] == 4:  # Has alpha channel.
+                mask = 255 - input_image[:, :, 3:4]  # Invert mask
+                input_image = input_image[:, :, :3]
             feat = self.processor(images=input_image, return_tensors="pt")
             feat['pixel_values'] = feat['pixel_values'].to(self.device)
+            # Apply CLIP mask.
+            if mask is not None:
+                mask_tensor = torch.from_numpy(mask).to(self.device).float() / 255.0
+                feat['pixel_values'] *= rearrange(mask_tensor, "h w c -> 1 c h w")
             result = self.model(**feat, output_hidden_states=True)
             result['hidden_states'] = [v.to(self.device) for v in result['hidden_states']]
             result = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in result.items()}
