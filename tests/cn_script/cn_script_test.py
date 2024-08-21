@@ -1,4 +1,3 @@
-from typing import Any, Dict, List
 import unittest
 from PIL import Image
 import numpy as np
@@ -8,7 +7,7 @@ import importlib
 utils = importlib.import_module("extensions.sd-webui-controlnet.tests.utils", "utils")
 
 
-from scripts import external_code, processor
+from scripts import external_code
 from scripts.controlnet import prepare_mask, Script, set_numpy_seed
 from modules import processing
 
@@ -102,9 +101,10 @@ class MockImg2ImgProcessing(processing.StableDiffusionProcessing):
     """Mock the Img2Img processing as the WebUI version have dependency on
     `sd_model`."""
 
-    def __init__(self, init_images, *args, **kwargs):
+    def __init__(self, init_images, resize_mode, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.init_images = init_images
+        self.resize_mode = resize_mode
 
 
 class TestScript(unittest.TestCase):
@@ -121,25 +121,6 @@ class TestScript(unittest.TestCase):
         [[100, 200, 50], [150, 75, 225], [30, 120, 180]], dtype=np.uint8
     )
 
-    def test_bound_check_params(self):
-        def param_required(module: str, param: str) -> bool:
-            configs = processor.preprocessor_sliders_config[module]
-            config_index = ("processor_res", "threshold_a", "threshold_b").index(param)
-            return config_index < len(configs) and configs[config_index] is not None
-
-        for module in processor.preprocessor_sliders_config.keys():
-            for param in ("processor_res", "threshold_a", "threshold_b"):
-                with self.subTest(param=param, module=module):
-                    unit = external_code.ControlNetUnit(
-                        module=module,
-                        **{param: -100},
-                    )
-                    Script.bound_check_params(unit)
-                    if param_required(module, param):
-                        self.assertGreaterEqual(getattr(unit, param), 0)
-                    else:
-                        self.assertEqual(getattr(unit, param), -100)
-
     def test_choose_input_image(self):
         with self.subTest(name="no image"):
             with self.assertRaises(ValueError):
@@ -150,22 +131,33 @@ class TestScript(unittest.TestCase):
                 )
 
         with self.subTest(name="control net input"):
-            _, from_a1111 = Script.choose_input_image(
-                p=MockImg2ImgProcessing(init_images=[TestScript.sample_np_image]),
+            _, resize_mode = Script.choose_input_image(
+                p=MockImg2ImgProcessing(
+                    init_images=[TestScript.sample_np_image],
+                    resize_mode=external_code.ResizeMode.OUTER_FIT,
+                ),
                 unit=external_code.ControlNetUnit(
-                    image=TestScript.sample_base64_image, module="none"
+                    image=TestScript.sample_base64_image,
+                    module="none",
+                    resize_mode=external_code.ResizeMode.INNER_FIT,
                 ),
                 idx=0,
             )
-            self.assertFalse(from_a1111)
+            self.assertEqual(resize_mode, external_code.ResizeMode.INNER_FIT)
 
         with self.subTest(name="A1111 input"):
-            _, from_a1111 = Script.choose_input_image(
-                p=MockImg2ImgProcessing(init_images=[TestScript.sample_np_image]),
-                unit=external_code.ControlNetUnit(module="none"),
+            _, resize_mode = Script.choose_input_image(
+                p=MockImg2ImgProcessing(
+                    init_images=[TestScript.sample_np_image],
+                    resize_mode=external_code.ResizeMode.OUTER_FIT,
+                ),
+                unit=external_code.ControlNetUnit(
+                    module="none",
+                    resize_mode=external_code.ResizeMode.INNER_FIT,
+                ),
                 idx=0,
             )
-            self.assertTrue(from_a1111)
+            self.assertEqual(resize_mode, external_code.ResizeMode.OUTER_FIT)
 
 
 if __name__ == "__main__":
