@@ -313,6 +313,111 @@ legacy_preprocessors = {
             "OpenPose"
         ]
     },
+    "dw_openpose_body": {
+        "label": "dw_openpose_body",
+        "call_function": functools.partial(g_openpose_model.run_model, include_body=True, include_hand=True, include_face=False, use_dw_pose=True, max_pose_count = 1, add_pose_default = True),
+        "unload_function": g_openpose_model.unload,
+        "managed_model": 'g_openpose_model',
+        "model_free": False,
+        "no_control_mode": False,
+        "resolution": {
+            "label": "Resolution",
+            "minimum": 64,
+            "maximum": 2048,
+            "value": 512
+        },
+        "slider_1": None,
+        "slider_2": None,
+        "slider_3": None,
+        "priority": 0,
+        "tags": [
+            "OpenPose"
+        ]
+    },
+    "dw_openpose_body2": {
+        "label": "dw_openpose_body2",
+        "call_function": functools.partial(g_openpose_model.run_model, include_body=True, include_hand=True, include_face=False, use_dw_pose=True, max_pose_count = 0, add_pose_default = False),
+        "unload_function": g_openpose_model.unload,
+        "managed_model": 'g_openpose_model',
+        "model_free": False,
+        "no_control_mode": False,
+        "resolution": {
+            "label": "Resolution",
+            "minimum": 64,
+            "maximum": 2048,
+            "value": 512
+        },
+        "slider_1": None,
+        "slider_2": None,
+        "slider_3": None,
+        "priority": 0,
+        "tags": [
+            "OpenPose"
+        ]
+    },
+    "dw_openpose_mnc": {
+        "label": "dw_openpose_mnc",
+        "call_function": functools.partial(g_openpose_model.run_model, include_body=True, include_hand=True, include_face=False, use_dw_pose=True, fix_neck = True, max_pose_count = 1, add_pose_default = True),
+        "unload_function": g_openpose_model.unload,
+        "managed_model": 'g_openpose_model',
+        "model_free": False,
+        "no_control_mode": False,
+        "resolution": {
+            "label": "Resolution",
+            "minimum": 64,
+            "maximum": 2048,
+            "value": 512
+        },
+        "slider_1": None,
+        "slider_2": None,
+        "slider_3": None,
+        "priority": 0,
+        "tags": [
+            "OpenPose"
+        ]
+    },
+    "dw_openpose_half_body_with_arm": {
+        "label": "dw_openpose_half_body_with_arm",
+        "call_function": functools.partial(g_openpose_model.run_model, include_body=True, include_hand=True, include_face=False, use_dw_pose=True, fix_neck = True, add_face=True, add_arm=False, add_leg=True, max_pose_count = 1, add_pose_default = True),
+        "unload_function": g_openpose_model.unload,
+        "managed_model": 'g_openpose_model',
+        "model_free": False,
+        "no_control_mode": False,
+        "resolution": {
+            "label": "Resolution",
+            "minimum": 64,
+            "maximum": 2048,
+            "value": 512
+        },
+        "slider_1": None,
+        "slider_2": None,
+        "slider_3": None,
+        "priority": 0,
+        "tags": [
+            "OpenPose"
+        ]
+    },
+    "dw_openpose_half_body_without_arm": {
+        "label": "dw_openpose_half_body_without_arm",
+        "call_function": functools.partial(g_openpose_model.run_model, include_body=True, include_hand=False, include_face=False, use_dw_pose=True, fix_neck = True, add_face=True, add_arm=True, add_leg=True, max_pose_count = 1, add_pose_default = True),
+        "unload_function": g_openpose_model.unload,
+        "managed_model": 'g_openpose_model',
+        "model_free": False,
+        "no_control_mode": False,
+        "resolution": {
+            "label": "Resolution",
+            "minimum": 64,
+            "maximum": 2048,
+            "value": 512
+        },
+        "slider_1": None,
+        "slider_2": None,
+        "slider_3": None,
+        "priority": 0,
+        "tags": [
+            "OpenPose"
+        ]
+    },
     "inpaint": {
         "label": "inpaint_global_harmonious",
         "call_function": identity,
@@ -397,7 +502,7 @@ legacy_preprocessors = {
     "ip-adapter_clip_sd15": {
         "label": "ip-adapter_clip_h",
         "call_function": functools.partial(clip, config='clip_h'),
-        "unload_function": functools.partial(unload_clip, config='clip_h'),
+        "unload_function": functools.partial(not_unload_clip, config='clip_h'),
         "managed_model": "unknown",
         "model_free": False,
         "no_control_mode": True,
@@ -431,7 +536,7 @@ legacy_preprocessors = {
     "ip-adapter_clip_sdxl_plus_vith": {
         "label": "ip-adapter_clip_sdxl_plus_vith",
         "call_function": functools.partial(clip, config='clip_h'),
-        "unload_function": functools.partial(unload_clip, config='clip_h'),
+        "unload_function": functools.partial(not_unload_clip, config='clip_h'),
         "managed_model": "unknown",
         "model_free": False,
         "no_control_mode": True,
@@ -465,7 +570,7 @@ legacy_preprocessors = {
     "ip-adapter_face_id_plus": {
         "label": "ip-adapter_face_id_plus",
         "call_function": face_id_plus,
-        "unload_function": functools.partial(unload_clip, config='clip_h'),
+        "unload_function": functools.partial(not_unload_clip, config='clip_h'),
         "managed_model": "unknown",
         "model_free": False,
         "no_control_mode": True,
