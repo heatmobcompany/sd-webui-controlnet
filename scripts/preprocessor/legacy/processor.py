@@ -5,12 +5,11 @@ import torch
 import math
 from dataclasses import dataclass
 from transformers.models.clip.modeling_clip import CLIPVisionModelOutput
-
-from annotator.util import HWC3
 from typing import Callable, Tuple, Union
 
 from modules.safe import Extra
 from modules import devices
+from annotator.util import HWC3
 from scripts.logging import logger
 
 
@@ -52,32 +51,9 @@ def resize_image_with_pad(input_image, resolution, skip_hwc3=False):
     return safer_memory(img_padded), remove_pad
 
 
-model_canny = None
-
-
 def canny(img, res=512, thr_a=100, thr_b=200, **kwargs):
-    l, h = thr_a, thr_b  # noqa: E741
     img, remove_pad = resize_image_with_pad(img, res)
-    global model_canny
-    if model_canny is None:
-        from annotator.canny import apply_canny
-        model_canny = apply_canny
-    result = model_canny(img, l, h)
-    if False:
-        print("HM remove canny edge")
-        mask = np.any(img != [0, 0, 0], axis=-1)
-        mask = mask.astype(np.uint8) * 255
-        kernel = np.ones((3,3), np.uint8)
-        mask = cv2.erode(mask, kernel, iterations = 1)
-        result = cv2.bitwise_and(result, result, mask=mask)
-
-    return remove_pad(result), True
-
-
-def scribble_thr(img, res=512, **kwargs):
-    img, remove_pad = resize_image_with_pad(img, res)
-    result = np.zeros_like(img, dtype=np.uint8)
-    result[np.min(img, axis=2) < 127] = 255
+    result = cv2.Canny(img, thr_a, thr_b)
     return remove_pad(result), True
 
 
@@ -635,20 +611,6 @@ def unload_oneformer_ade20k():
         model_oneformer_ade20k.unload_model()
 
 
-model_shuffle = None
-
-
-def shuffle(img, res=512, **kwargs):
-    img, remove_pad = resize_image_with_pad(img, res)
-    img = remove_pad(img)
-    global model_shuffle
-    if model_shuffle is None:
-        from annotator.shuffle import ContentShuffleDetector
-        model_shuffle = ContentShuffleDetector()
-    result = model_shuffle(img)
-    return result, True
-
-
 def recolor_luminance(img, res=512, thr_a=1.0, **kwargs):
     result = cv2.cvtColor(HWC3(img), cv2.COLOR_BGR2LAB)
     result = result[:, :, 0].astype(np.float32) / 255.0
@@ -721,30 +683,22 @@ def unload_te_hed():
     if model_te_hed is not None:
         model_te_hed.unload_model()
 
-
-model_normal_dsine = None
-
-
-def normal_dsine(img, res=512, thr_a=60.0,thr_b=5, **kwargs):
-    global model_normal_dsine
-    if model_normal_dsine is None:
-        from annotator.normaldsine import NormalDsineDetector
-        model_normal_dsine = NormalDsineDetector()
-    result = model_normal_dsine(img, new_fov=float(thr_a), iterations=int(thr_b), resulotion=res)
-    return result, True
-
-
-def unload_normal_dsine():
-    global model_normal_dsine
-    if model_normal_dsine is not None:
-        model_normal_dsine.unload_model()
-
-
 class InsightFaceModel:
     def __init__(self, face_analysis_model_name: str = "buffalo_l"):
         self.model = None
         self.face_analysis_model_name = face_analysis_model_name
         self.antelopev2_installed = False
+
+    @staticmethod
+    def pick_largest_face(faces):
+        if not faces:
+            raise Exception("Insightface: No face found in image.")
+        if len(faces) > 1:
+            logger.warn("Insightface: More than one face is detected in the image. "
+                        "Only the biggest one will be used.")
+        # only use the biggest face
+        face = sorted(faces, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]
+        return face
 
     def install_antelopev2(self):
         """insightface's github release on antelopev2 model is down. Downloading
@@ -779,14 +733,10 @@ class InsightFaceModel:
 
     def run_model(self, img: np.ndarray, **kwargs) -> Tuple[torch.Tensor, bool]:
         self.load_model()
-        img = HWC3(img)
-        faces = self.model.get(img)
-        if not faces:
-            raise Exception("Insightface: No face found in image.")
-        if len(faces) > 1:
-            logger.warn("Insightface: More than one face is detected in the image. "
-                        "Only the first one will be used.")
-        return torch.from_numpy(faces[0].normed_embedding).unsqueeze(0), False
+        img = img[:, :, :3]  # Drop alpha channel if there is one.
+        faces = self.model.get(cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+        face = InsightFaceModel.pick_largest_face(faces)
+        return torch.from_numpy(face.normed_embedding).unsqueeze(0), False
 
     def run_model_instant_id(
         self,
@@ -832,15 +782,10 @@ class InsightFaceModel:
             self.install_antelopev2()
         self.load_model()
 
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         img, remove_pad = resize_image_with_pad(img, res)
-        face_info = self.model.get(img)
-        if not face_info:
-            raise Exception("Insightface: No face found in image.")
-        if len(face_info) > 1:
-            logger.warn("Insightface: More than one face is detected in the image. "
-                        "Only the biggest one will be used.")
-        # only use the maximum face
-        face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]
+        faces = self.model.get(img)
+        face_info = InsightFaceModel.pick_largest_face(faces)
         if return_keypoints:
             return remove_pad(draw_kps(img, face_info['kps'])), True
         else:
@@ -899,519 +844,3 @@ class HandRefinerModel:
 
 
 g_hand_refiner_model = HandRefinerModel()
-
-
-model_free_preprocessors = [
-    "reference_only",
-    "reference_adain",
-    "reference_adain+attn",
-    "revision_clipvision",
-    "revision_ignore_prompt"
-]
-
-no_control_mode_preprocessors = [
-    "revision_clipvision",
-    "revision_ignore_prompt",
-    "clip_vision",
-    "ip-adapter_clip_sd15",
-    "ip-adapter_clip_sdxl",
-    "ip-adapter_clip_sdxl_plus_vith",
-    "t2ia_style_clipvision",
-    "ip-adapter_face_id",
-    "ip-adapter_face_id_plus",
-]
-
-flag_preprocessor_resolution = "Preprocessor Resolution"
-preprocessor_sliders_config = {
-    "none": [],
-    "inpaint": [],
-    "inpaint_only": [],
-    "revision_clipvision": [
-        None,
-        {
-            "name": "Noise Augmentation",
-            "value": 0.0,
-            "min": 0.0,
-            "max": 1.0
-        },
-    ],
-    "revision_ignore_prompt": [
-        None,
-        {
-            "name": "Noise Augmentation",
-            "value": 0.0,
-            "min": 0.0,
-            "max": 1.0
-        },
-    ],
-    "canny": [
-        {
-            "name": flag_preprocessor_resolution,
-            "value": 512,
-            "min": 64,
-            "max": 2048
-        },
-        {
-            "name": "Canny Low Threshold",
-            "value": 100,
-            "min": 1,
-            "max": 255
-        },
-        {
-            "name": "Canny High Threshold",
-            "value": 200,
-            "min": 1,
-            "max": 255
-        },
-    ],
-    "mlsd": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        },
-        {
-            "name": "MLSD Value Threshold",
-            "min": 0.01,
-            "max": 2.0,
-            "value": 0.1,
-            "step": 0.01
-        },
-        {
-            "name": "MLSD Distance Threshold",
-            "min": 0.01,
-            "max": 20.0,
-            "value": 0.1,
-            "step": 0.01
-        }
-    ],
-    "hed": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "scribble_hed": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "hed_safe": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "openpose": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "openpose_full": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "dw_openpose_full": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "animal_openpose": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "dw_openpose_body": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "dw_openpose_body2": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "dw_openpose_half_body_with_arm": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "dw_openpose_half_body_without_arm": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "segmentation": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "depth": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "depth_leres": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        },
-        {
-            "name": "Remove Near %",
-            "min": 0,
-            "max": 100,
-            "value": 0,
-            "step": 0.1,
-        },
-        {
-            "name": "Remove Background %",
-            "min": 0,
-            "max": 100,
-            "value": 0,
-            "step": 0.1,
-        }
-    ],
-    "depth_leres++": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        },
-        {
-            "name": "Remove Near %",
-            "min": 0,
-            "max": 100,
-            "value": 0,
-            "step": 0.1,
-        },
-        {
-            "name": "Remove Background %",
-            "min": 0,
-            "max": 100,
-            "value": 0,
-            "step": 0.1,
-        }
-    ],
-    "normal_map": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        },
-        {
-            "name": "Normal Background Threshold",
-            "min": 0.0,
-            "max": 1.0,
-            "value": 0.4,
-            "step": 0.01
-        }
-    ],
-    "threshold": [
-        {
-            "name": flag_preprocessor_resolution,
-            "value": 512,
-            "min": 64,
-            "max": 2048
-        },
-        {
-            "name": "Binarization Threshold",
-            "min": 0,
-            "max": 255,
-            "value": 127
-        }
-    ],
-
-    "scribble_xdog": [
-        {
-            "name": flag_preprocessor_resolution,
-            "value": 512,
-            "min": 64,
-            "max": 2048
-        },
-        {
-            "name": "XDoG Threshold",
-            "min": 1,
-            "max": 64,
-            "value": 32,
-        }
-    ],
-    "blur_gaussian": [
-        {
-            "name": flag_preprocessor_resolution,
-            "value": 512,
-            "min": 64,
-            "max": 2048
-        },
-        {
-            "name": "Sigma",
-            "min": 0.01,
-            "max": 64.0,
-            "value": 9.0,
-        }
-    ],
-    "tile_resample": [
-        None,
-        {
-            "name": "Down Sampling Rate",
-            "value": 1.0,
-            "min": 1.0,
-            "max": 8.0,
-            "step": 0.01
-        }
-    ],
-    "tile_colorfix": [
-        None,
-        {
-            "name": "Variation",
-            "value": 8.0,
-            "min": 3.0,
-            "max": 32.0,
-            "step": 1.0
-        }
-    ],
-    "tile_colorfix+sharp": [
-        None,
-        {
-            "name": "Variation",
-            "value": 8.0,
-            "min": 3.0,
-            "max": 32.0,
-            "step": 1.0
-        },
-        {
-            "name": "Sharpness",
-            "value": 1.0,
-            "min": 0.0,
-            "max": 2.0,
-            "step": 0.01
-        }
-    ],
-    "reference_only": [
-        None,
-        {
-            "name": r'Style Fidelity (only for "Balanced" mode)',
-            "value": 0.5,
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.01
-        }
-    ],
-    "reference_adain": [
-        None,
-        {
-            "name": r'Style Fidelity (only for "Balanced" mode)',
-            "value": 0.5,
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.01
-        }
-    ],
-    "reference_adain+attn": [
-        None,
-        {
-            "name": r'Style Fidelity (only for "Balanced" mode)',
-            "value": 0.5,
-            "min": 0.0,
-            "max": 1.0,
-            "step": 0.01
-        }
-    ],
-    "inpaint_only+lama": [],
-    "color": [
-        {
-            "name": flag_preprocessor_resolution,
-            "value": 512,
-            "min": 64,
-            "max": 2048,
-        }
-    ],
-    "mediapipe_face": [
-        {
-            "name": flag_preprocessor_resolution,
-            "value": 512,
-            "min": 64,
-            "max": 2048,
-        },
-        {
-            "name": "Max Faces",
-            "value": 1,
-            "min": 1,
-            "max": 10,
-            "step": 1
-        },
-        {
-            "name": "Min Face Confidence",
-            "value": 0.5,
-            "min": 0.01,
-            "max": 1.0,
-            "step": 0.01
-        }
-    ],
-    "recolor_luminance": [
-        None,
-        {
-            "name": "Gamma Correction",
-            "value": 1.0,
-            "min": 0.1,
-            "max": 2.0,
-            "step": 0.001
-        }
-    ],
-    "recolor_intensity": [
-        None,
-        {
-            "name": "Gamma Correction",
-            "value": 1.0,
-            "min": 0.1,
-            "max": 2.0,
-            "step": 0.001
-        }
-    ],
-    "anime_face_segment": [
-        {
-            "name": flag_preprocessor_resolution,
-            "value": 512,
-            "min": 64,
-            "max": 2048
-        }
-    ],
-    "densepose": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "densepose_parula": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        }
-    ],
-    "depth_hand_refiner": [
-        {
-            "name": flag_preprocessor_resolution,
-            "value": 512,
-            "min": 64,
-            "max": 2048
-        }
-    ],
-    "te_hed": [
-        {
-            "name": flag_preprocessor_resolution,
-            "value": 512,
-            "min": 64,
-            "max": 2048
-        },
-        {
-            "name": "Safe Steps",
-            "min": 0,
-            "max": 10,
-            "value": 2,
-            "step": 1,
-        },
-    ],
-    "normal_dsine": [
-        {
-            "name": flag_preprocessor_resolution,
-            "min": 64,
-            "max": 2048,
-            "value": 512
-        },
-        {
-            "name": "Fov",
-            "min": 0.0,
-            "max": 360.0,
-            "value": 60.0,
-            "step": 0.1,
-        },
-        {
-            "name": "Iterations",
-            "min": 1,
-            "max": 20,
-            "value": 5,
-            "step": 1,
-        },
-    ],
-}
-
-preprocessor_filters = {
-    "All": "none",
-    "Canny": "canny",
-    "Depth": "depth_midas",
-    "NormalMap": "normal_bae",
-    "OpenPose": "openpose_full",
-    "MLSD": "mlsd",
-    "Lineart": "lineart_standard (from white bg & black line)",
-    "SoftEdge": "softedge_pidinet",
-    "Scribble/Sketch": "scribble_pidinet",
-    "Segmentation": "seg_ofade20k",
-    "Shuffle": "shuffle",
-    "Tile/Blur": "tile_resample",
-    "Inpaint": "inpaint_only",
-    "InstructP2P": "none",
-    "Reference": "reference_only",
-    "Recolor": "recolor_luminance",
-    "Revision": "revision_clipvision",
-    "T2I-Adapter": "none",
-    "IP-Adapter": "ip-adapter-auto",
-    "Instant_ID": "instant_id",
-    "SparseCtrl": "none",
-}
-
-preprocessor_filters_aliases = {
-    'instructp2p': ['ip2p'],
-    'segmentation': ['seg'],
-    'normalmap': ['normal'],
-    't2i-adapter': ['t2i_adapter', 't2iadapter', 't2ia'],
-    'ip-adapter': ['ip_adapter', 'ipadapter'],
-    'scribble/sketch': ['scribble', 'sketch'],
-    'tile/blur': ['tile', 'blur'],
-    'openpose':['openpose', 'densepose'],
-}  # must use all lower texts

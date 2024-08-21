@@ -1,5 +1,7 @@
 from typing import List, Optional
-
+import base64
+import io
+import torch
 import numpy as np
 from fastapi import FastAPI, Body
 from fastapi.exceptions import HTTPException
@@ -13,8 +15,9 @@ from modules.api.models import *  # noqa:F403
 from modules.api import api
 
 from scripts import external_code, global_state
-from scripts.processor import preprocessor_filters
 from scripts.logging import logger
+from scripts.external_code import ControlNetUnit
+from scripts.supported_preprocessor import Preprocessor
 from annotator.openpose import draw_poses, decode_json_as_poses
 from annotator.openpose.animalpose import draw_animalposes
 
@@ -34,6 +37,14 @@ def encode_to_base64(image):
 def encode_np_to_base64(image):
     pil = Image.fromarray(image)
     return api.encode_pil_to_base64(pil)
+
+
+def encode_tensor_to_base64(obj: torch.Tensor) -> str:
+    """Serialize the tensor data to base64 string."""
+    buffer = io.BytesIO()
+    torch.save(obj, buffer)
+    buffer.seek(0)  # Rewind the buffer
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
 def controlnet_api(_: gr.Blocks, app: FastAPI):
@@ -77,7 +88,7 @@ def controlnet_api(_: gr.Blocks, app: FastAPI):
                 control_type: format_control_type(
                     *global_state.select_control_type(control_type)
                 )
-                for control_type in preprocessor_filters.keys()
+                for control_type in Preprocessor.get_all_preprocessor_tags()
             }
         }
 
@@ -86,29 +97,31 @@ def controlnet_api(_: gr.Blocks, app: FastAPI):
         max_models_num = external_code.get_max_models_num()
         return {"control_net_unit_count": max_models_num}
 
-    cached_cn_preprocessors = global_state.cache_preprocessors(
-        global_state.cn_preprocessor_modules
-    )
-
     @app.post("/controlnet/detect")
     async def detect(
         controlnet_module: str = Body("none", title="Controlnet Module"),
         controlnet_input_images: List[str] = Body([], title="Controlnet Input Images"),
         controlnet_processor_res: int = Body(
-            512, title="Controlnet Processor Resolution"
+            -1, title="Controlnet Processor Resolution"
         ),
-        controlnet_threshold_a: float = Body(64, title="Controlnet Threshold a"),
-        controlnet_threshold_b: float = Body(64, title="Controlnet Threshold b"),
+        controlnet_threshold_a: float = Body(-1, title="Controlnet Threshold a"),
+        controlnet_threshold_b: float = Body(-1, title="Controlnet Threshold b"),
         low_vram: bool = Body(False, title="Low vram"),
     ):
         logger.info(f"===== API /controlnet/detect start =====")
         start_time = time.time()
-        controlnet_module = global_state.reverse_preprocessor_aliases.get(
-            controlnet_module, controlnet_module
-        )
+        preprocessor = Preprocessor.get_preprocessor(controlnet_module)
 
-        if controlnet_module not in cached_cn_preprocessors:
+        if preprocessor is None:
             raise HTTPException(status_code=422, detail="Module not available")
+
+        if controlnet_module in (
+            "clip_vision",
+            "revision_clipvision",
+            "revision_ignore_prompt",
+            "ip-adapter-auto",
+        ):
+            raise HTTPException(status_code=422, detail="Module not supported")
 
         if len(controlnet_input_images) == 0:
             raise HTTPException(status_code=422, detail="No image selected")
@@ -117,10 +130,16 @@ def controlnet_api(_: gr.Blocks, app: FastAPI):
             f"Detecting {str(len(controlnet_input_images))} images with the {controlnet_module} module."
         )
 
+        unit = ControlNetUnit(
+            module=preprocessor.label,
+            processor_res=controlnet_processor_res,
+            threshold_a=controlnet_threshold_a,
+            threshold_b=controlnet_threshold_b,
+        )
+        unit.bound_check_params()
+
         results = []
         poses = []
-
-        processor_module = cached_cn_preprocessors[controlnet_module]
 
         for input_image in controlnet_input_images:
             img = external_code.to_base64_nparray(input_image)
@@ -133,28 +152,27 @@ def controlnet_api(_: gr.Blocks, app: FastAPI):
                     self.value = json_dict
 
             json_acceptor = JsonAcceptor()
-
-            results.append(
-                processor_module(
-                    img,
-                    res=controlnet_processor_res,
-                    thr_a=controlnet_threshold_a,
-                    thr_b=controlnet_threshold_b,
-                    json_pose_callback=json_acceptor.accept,
-                    low_vram=low_vram,
-                )[0]
+            detected_map = preprocessor.cached_call(
+                img,
+                resolution=unit.processor_res,
+                slider_1=unit.threshold_a,
+                slider_2=unit.threshold_b,
+                json_pose_callback=json_acceptor.accept,
+                low_vram=low_vram,
             )
+            results.append(detected_map)
 
             if "openpose" in controlnet_module:
                 assert json_acceptor.value is not None
                 poses.append(json_acceptor.value)
 
-        global_state.cn_preprocessor_unloadable.get(controlnet_module, lambda: None)()
-        results64 = list(map(encode_to_base64, results))
-        res = {"images": results64, "info": "Success"}
-        if poses:
-            res["poses"] = poses
-
+        res = {"info": "Success"}
+        if preprocessor.returns_image:
+            res["images"] = [encode_to_base64(r) for r in results]
+            if poses:
+                res["poses"] = poses
+        else:
+            res["tensor"] = [encode_tensor_to_base64(r) for r in results]
         logger.info("===== API /controlnet/detect end in {:.3f} seconds =====".format(time.time() - start_time))
         return res
 
